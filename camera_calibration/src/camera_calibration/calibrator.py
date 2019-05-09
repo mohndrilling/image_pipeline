@@ -472,6 +472,10 @@ class Calibrator(object):
         print("R = ", numpy.ravel(r).tolist())
         print("P = ", numpy.ravel(p).tolist())
 
+    def lrextreport(self, t, r):
+        print("R = ", numpy.ravel(r).tolist())
+        print("T = ", numpy.ravel(t).tolist())
+
     def lrost(self, name, d, k, r, p):
         calmessage = (
         "# oST version 5.0 parameters\n"
@@ -508,7 +512,7 @@ class Calibrator(object):
         assert len(calmessage) < 525, "Calibration info must be less than 525 bytes"
         return calmessage
 
-    def lryaml(self, name, d, k, r, p):
+    def lryaml(self, name, d, k, r, p, T):
         calmessage = (""
         + "image_width: " + str(self.size[0]) + "\n"
         + "image_height: " + str(self.size[1]) + "\n"
@@ -530,6 +534,10 @@ class Calibrator(object):
         + "  rows: 3\n"
         + "  cols: 4\n"
         + "  data: [" + ", ".join(["%8f" % i for i in p.reshape(1,12)[0]]) + "]\n"
+        + "translationLeftRight:\n"
+        + "  rows: 1\n"
+        + "  cols: 3\n"
+        + "  data: [" + ", ".join(["%8f" % i for i in T.reshape(1,3)[0]]) + "]\n"
         + "")
         return calmessage
 
@@ -989,15 +997,16 @@ class StereoCalibrator(Calibrator):
         self.lrreport(self.l.distortion, self.l.intrinsics, self.l.R, self.l.P)
         print("\nRight:")
         self.lrreport(self.r.distortion, self.r.intrinsics, self.r.R, self.r.P)
-        print("self.T ", numpy.ravel(self.T).tolist())
-        print("self.R ", numpy.ravel(self.R).tolist())
+        print("\nExtrinsics:")
+        self.lrextreport(self.T, self.R)
+
 
     def ost(self):
         return (self.lrost(self.name + "/left", self.l.distortion, self.l.intrinsics, self.l.R, self.l.P) +
-          self.lrost(self.name + "/right", self.r.distortion, self.r.intrinsics, self.r.R, self.r.P))
-
+            self.lrost(self.name + "/right", self.r.distortion, self.r.intrinsics, self.r.R, self.r.P))
+        
     def yaml(self, suffix, info):
-        return self.lryaml(self.name + suffix, info.distortion, info.intrinsics, info.R, info.P)
+        return self.lryaml(self.name + suffix, info.distortion, info.intrinsics, info.R, info.P, self.T)
 
     # TODO Get rid of "from_images" versions of these, instead have function to get undistorted corners
     def epipolar_error_from_images(self, limage, rimage):
