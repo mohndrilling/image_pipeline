@@ -94,7 +94,7 @@ def main():
         parser.error("Number of size and square inputs must be the same!")
 
     if not options.square:
-        options.square.append("0.108")
+        options.square.append("0.0809556")
         options.size.append("8x6")
 
     boards = []

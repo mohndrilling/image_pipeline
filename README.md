@@ -4,8 +4,7 @@ Launch by navigating to "catkin_ws/build/image_pipeline/camera_calibration/catki
 ./cameracalibrator.py --size 8x6 --square 0.0809556 right:=/stereo/right/image_raw left:=/stereo/left/image_raw
 ```
 
-Camera has to publish unrectified video to the right and left topic described above
-
+Camera has to publish unrectified video to the right and left topic described above using the "realsense_MT" package or playback of rosbag.
 
 
 

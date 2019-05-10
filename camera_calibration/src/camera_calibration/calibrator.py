@@ -48,7 +48,8 @@ import sensor_msgs.msg
 import tarfile
 import time
 from distutils.version import LooseVersion
-
+import lxml.etree # XML read/write
+import lxml.builder # XML read/write
 
 # Supported calibration patterns
 class Patterns:
@@ -466,15 +467,18 @@ class Calibrator(object):
         msg.P = numpy.ravel(p).copy().tolist()
         return msg
 
-    def lrreport(self, d, k, r, p):
+    def lrreport(self, d, k, r, p, reProjErr):
         print("D = ", numpy.ravel(d).tolist())
         print("K = ", numpy.ravel(k).tolist())
         print("R = ", numpy.ravel(r).tolist())
         print("P = ", numpy.ravel(p).tolist())
+        print("Re-projection error = ", reProjErr[0])
 
-    def lrextreport(self, t, r):
+    def lrextreport(self, t, r, reProjErr):
         print("R = ", numpy.ravel(r).tolist())
         print("T = ", numpy.ravel(t).tolist())
+        print("Re-projection error = ", reProjErr[0])
+
 
     def lrost(self, name, d, k, r, p):
         calmessage = (
@@ -645,11 +649,11 @@ class MonoCalibrator(Calibrator):
         # If FIX_ASPECT_RATIO flag set, enforce focal lengths have 1/1 ratio
         self.intrinsics[0,0] = 1.0
         self.intrinsics[1,1] = 1.0
-        cv2.calibrateCamera(
-                   opts, ipts,
-                   self.size, self.intrinsics,
-                   self.distortion,
-                   flags = self.calib_flags)
+        self.reProjErr = cv2.calibrateCamera(
+                                    opts, ipts,
+                                    self.size, self.intrinsics,
+                                    self.distortion,
+                                    flags = self.calib_flags)
 
         # R is identity matrix for monocular calibration
         self.R = numpy.eye(3, dtype=numpy.float64)
@@ -928,7 +932,7 @@ class StereoCalibrator(Calibrator):
         self.T = numpy.zeros((3, 1), dtype=numpy.float64)
         self.R = numpy.eye(3, dtype=numpy.float64)
         if LooseVersion(cv2.__version__).version[0] == 2:
-            cv2.stereoCalibrate(opts, lipts, ripts, self.size,
+            self.reProjErr = cv2.stereoCalibrate(opts, lipts, ripts, self.size,
                                self.l.intrinsics, self.l.distortion,
                                self.r.intrinsics, self.r.distortion,
                                self.R,                            # R
@@ -936,7 +940,7 @@ class StereoCalibrator(Calibrator):
                                criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1, 1e-5),
                                flags = flags)
         else:
-            cv2.stereoCalibrate(opts, lipts, ripts,
+            self.reProjErr = cv2.stereoCalibrate(opts, lipts, ripts,
                                self.l.intrinsics, self.l.distortion,
                                self.r.intrinsics, self.r.distortion,
                                self.size,
@@ -994,11 +998,11 @@ class StereoCalibrator(Calibrator):
 
     def report(self):
         print("\nLeft:")
-        self.lrreport(self.l.distortion, self.l.intrinsics, self.l.R, self.l.P)
+        self.lrreport(self.l.distortion, self.l.intrinsics, self.l.R, self.l.P, self.l.reProjErr)
         print("\nRight:")
-        self.lrreport(self.r.distortion, self.r.intrinsics, self.r.R, self.r.P)
+        self.lrreport(self.r.distortion, self.r.intrinsics, self.r.R, self.r.P, self.r.reProjErr)
         print("\nExtrinsics:")
-        self.lrextreport(self.T, self.R)
+        self.lrextreport(self.T, self.R, self.reProjErr)
 
 
     def ost(self):
@@ -1007,6 +1011,74 @@ class StereoCalibrator(Calibrator):
         
     def yaml(self, suffix, info):
         return self.lryaml(self.name + suffix, info.distortion, info.intrinsics, info.R, info.P, self.T)
+    
+    def xml(self):
+        E = lxml.builder.ElementMaker()
+        Config = E.Config
+        param = E.param
+        value = E.value
+        FIELD2 = E.field2
+
+        xml_string = Config(
+            param(value(str(self.size[0])),
+                    value(str(self.size[1])),
+                    name='ResolutionLeftRight'
+            ),
+            param(value(str(self.l.intrinsics[0,0])),
+                    value(str(self.l.intrinsics[1,1])),
+                    name='FocalLengthLeft'
+            ),
+            param(value(str(self.l.intrinsics[0,2])),
+                    value(str(self.l.intrinsics[1,2])),
+                    name='PrincipalPointLeft'
+            ),
+            param(value(str(self.l.distortion[0,0])),
+                    value(str(self.l.distortion[1,0])),
+                    value(str(self.l.distortion[2,0])),
+                    value(str(self.l.distortion[3,0])),
+                    value(str(self.l.distortion[4,0])),
+                    name='DistortionLeft'
+            ),
+            param(value(str(self.r.intrinsics[0,0])),
+                    value(str(self.r.intrinsics[1,1])),
+                    name='FocalLengthRight'
+            ),
+            param(value(str(self.r.intrinsics[0,2])),
+                    value(str(self.r.intrinsics[1,2])),
+                    name='PrincipalPointRight'
+            ),
+            param(value(str(self.r.distortion[0,0])),
+                    value(str(self.r.distortion[1,0])),
+                    value(str(self.r.distortion[2,0])),
+                    value(str(self.r.distortion[3,0])),
+                    value(str(self.r.distortion[4,0])),
+                    name='DistortionRight'
+            ),
+            param(value(str(self.R[0,0])),
+                    value(str(self.R[0,1])),
+                    value(str(self.R[0,2])),
+                    value(str(self.R[1,0])),
+                    value(str(self.R[1,1])),
+                    value(str(self.R[1,2])),
+                    value(str(self.R[2,0])),
+                    value(str(self.R[2,1])),
+                    value(str(self.R[2,2])),
+                    name='RotationLeftRight'
+            ),
+            param(value(str(self.T[0,0]*1000)),
+                    value(str(self.T[1,0]*1000)),
+                    value(str(self.T[2,0]*1000)),
+                    name='TranslationLeftRight'
+            )
+
+        )  
+
+        print lxml.etree.tostring(xml_string, pretty_print=True) # Print result
+        calib_file = lxml.etree.ElementTree(xml_string) # Convert to element tree
+        calib_file.write("rs_calib.xml", pretty_print=True) # Write to file
+        
+  
+
 
     # TODO Get rid of "from_images" versions of these, instead have function to get undistorted corners
     def epipolar_error_from_images(self, limage, rimage):
@@ -1150,6 +1222,7 @@ class StereoCalibrator(Calibrator):
         # DEBUG
         print((self.report()))
         print((self.ost()))
+        self.xml()
 
     def do_tarfile_save(self, tf):
         """ Write images and calibration solution to a tarfile object """
@@ -1172,7 +1245,7 @@ class StereoCalibrator(Calibrator):
         taradd('left.yaml', self.yaml("/left", self.l))
         taradd('right.yaml', self.yaml("/right", self.r))
         taradd('ost.txt', self.ost())
-
+        
     def do_tarfile_calibration(self, filename):
         archive = tarfile.open(filename, 'r')
         limages = [ image_from_archive(archive, f) for f in archive.getnames() if (f.startswith('left') and (f.endswith('pgm') or f.endswith('png'))) ]
