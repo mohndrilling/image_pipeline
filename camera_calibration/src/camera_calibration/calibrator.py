@@ -1076,6 +1076,7 @@ class StereoCalibrator(Calibrator):
         print lxml.etree.tostring(xml_string, pretty_print=True) # Print result
         calib_file = lxml.etree.ElementTree(xml_string) # Convert to element tree
         calib_file.write("rs_calib.xml", pretty_print=True) # Write to file
+        print("Realsense calibration file 'rs_calib' saved to current folder")
         
   
 
